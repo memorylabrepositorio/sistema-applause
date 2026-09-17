@@ -162,6 +162,10 @@
     font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border);
     background: var(--card-bg); color: var(--text-primary); width: 100%;
   }
+  .inst-select {
+    font: inherit; font-size: 13.5px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--card-bg); color: var(--text-primary); width: 100%;
+  }
   .filter-note-row {
     grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between;
     gap: 10px; flex-wrap: wrap; margin-top: 2px;
@@ -407,7 +411,7 @@
         <div class="search-row">
           <input type="text" id="searchInstituicao" placeholder="Buscar instituição…">
         </div>
-        <div class="evento-list" id="instituicaoList"><div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div></div>
+        <select id="instituicaoSelect" class="inst-select"><option value="">Carregando…</option></select>
 
         <div id="contratosBox" hidden style="margin-top:16px;">
           <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted); margin:0 0 10px; padding-bottom:6px; border-bottom:1px solid var(--border);">
@@ -717,25 +721,23 @@
       .filter(function (inst) { return !term || inst.toLowerCase().indexOf(term) !== -1; })
       .sort(function (a, b) { return a.localeCompare(b, "pt-BR"); });
 
+    var select = $("instituicaoSelect");
     if (!lista.length) {
-      $("instituicaoList").innerHTML = '<div class="card-sub">Nenhuma instituição encontrada.</div>';
+      select.innerHTML = '<option value="">Nenhuma instituição encontrada</option>';
       return;
     }
-    $("instituicaoList").innerHTML = lista.map(function (inst) {
-      var active = inst === state.instituicaoSelecionada;
-      return '<div class="evento-row' + (active ? ' active-bar' : '') + '" data-inst="' + escapeHtml(inst) + '" style="' + (active ? 'border-color:var(--series-1);' : '') + '">' +
-        '<div class="evento-info"><div class="evento-inst">' + escapeHtml(inst) + '</div></div>' +
-        '<span class="card-sub">' + porInstituicao[inst] + ' contrato(s)</span>' +
-      '</div>';
+    var atual = state.instituicaoSelecionada;
+    var aindaNaLista = atual && lista.indexOf(atual) !== -1;
+    select.innerHTML = '<option value="">Selecione a instituição…</option>' + lista.map(function (inst) {
+      var sel = inst === atual ? ' selected' : '';
+      return '<option value="' + escapeHtml(inst) + '"' + sel + '>' + escapeHtml(inst) + ' (' + porInstituicao[inst] + ' contrato(s))</option>';
     }).join("");
-    document.querySelectorAll("#instituicaoList .evento-row").forEach(function (row) {
-      row.addEventListener("click", function () { selecionarInstituicao(row.dataset.inst); });
-    });
+    if (!aindaNaLista) select.value = "";
   }
 
   function selecionarInstituicao(inst) {
-    state.instituicaoSelecionada = inst;
-    renderInstituicaoList();
+    state.instituicaoSelecionada = inst || null;
+    if (!inst) { $("contratosBox").hidden = true; return; }
     var contratosDaInst = state.contratos.filter(function (c) { return (c.instituicao || "").trim() === inst; })
       .sort(function (a, b) { return (b.ano_periodo || "").localeCompare(a.ano_periodo || ""); });
     $("contratosBox").hidden = false;
@@ -820,6 +822,9 @@
     $("searchInstituicao").addEventListener("input", function (e) {
       state.instituicaoTerm = e.target.value;
       renderInstituicaoList();
+    });
+    $("instituicaoSelect").addEventListener("change", function (e) {
+      selecionarInstituicao(e.target.value);
     });
     $("backToList").addEventListener("click", closeForm);
     $("btnSalvar").addEventListener("click", saveEvento);
