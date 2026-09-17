@@ -402,34 +402,26 @@
 
     <div id="listView">
       <div class="card full">
-        <h2>Novo evento</h2>
-        <div class="card-sub">Cadastre a instituição/turma pra começar o checklist dela</div>
-        <div class="new-evento-card">
-          <div class="form-field">
-            <label for="newInstituicao">Instituição</label>
-            <input type="text" id="newInstituicao" placeholder="Ex: E.M. Higienópolis">
-          </div>
-          <div class="form-field">
-            <label for="newTurma">Turma</label>
-            <input type="text" id="newTurma" placeholder="Ex: 9º ano / 3º EM">
-          </div>
-          <div class="form-field">
-            <label for="newCurso">Curso</label>
-            <input type="text" id="newCurso" placeholder="Ex: JPIHIGI E PRAIA DE BELAS">
-          </div>
-          <div class="form-field">
-            <label for="newData">Data do evento</label>
-            <input type="date" id="newData">
-          </div>
-          <button type="button" class="btn-primary" id="btnNovoEvento">Criar checklist</button>
+        <h2>Começar novo checklist</h2>
+        <div class="card-sub">Selecione a instituição e depois o contrato — vem direto do banco de dados</div>
+        <div class="search-row">
+          <input type="text" id="searchInstituicao" placeholder="Buscar instituição…">
+        </div>
+        <div class="evento-list" id="instituicaoList"><div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div></div>
+
+        <div id="contratosBox" hidden style="margin-top:16px;">
+          <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted); margin:0 0 10px; padding-bottom:6px; border-bottom:1px solid var(--border);">
+            Contratos de <span id="contratosInstName"></span>
+          </h3>
+          <div class="evento-list" id="contratoList"></div>
         </div>
       </div>
 
       <div class="card full">
         <div class="card-header-row">
           <div>
-            <h2>Eventos <span class="count-badge" id="eventosBadge"></span></h2>
-            <div class="card-sub">Clique num evento pra abrir o checklist</div>
+            <h2>Eventos com checklist <span class="count-badge" id="eventosBadge"></span></h2>
+            <div class="card-sub">Clique num evento pra abrir o checklist já iniciado</div>
           </div>
         </div>
         <div class="search-row">
@@ -475,6 +467,7 @@
     {
       title: "Informações gerais",
       fields: [
+        { key: "turma", label: "Turma" },
         { key: "adesao_atual", label: "Adesão atual" },
         { key: "capacidade_local", label: "Capacidade do local" },
         { key: "numero_formandos", label: "Número de formandos" },
@@ -540,7 +533,10 @@
   ];
   var ALL_FIELD_KEYS = SECTIONS.reduce(function (acc, s) { return acc.concat(s.fields.map(function (f) { return f.key; })); }, []);
 
-  var state = { eventos: [], currentId: null, searchTerm: "" };
+  var state = {
+    eventos: [], currentId: null, searchTerm: "",
+    contratos: [], instituicaoTerm: "", instituicaoSelecionada: null
+  };
 
   function setStatus(kind, text) {
     var pill = $("statusPill"), dot = $("statusDot");
@@ -551,6 +547,25 @@
   function escapeHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fetchAllRows(table, columns) {
+    var PAGE = 1000;
+    return supa.from(table).select(columns || "*", { count: "exact", head: true }).then(function (res) {
+      if (res.error) throw res.error;
+      var total = res.count || 0;
+      if (total === 0) return [];
+      var offsets = [];
+      for (var offset = 0; offset < total; offset += PAGE) offsets.push(offset);
+      return Promise.all(offsets.map(function (off) {
+        return supa.from(table).select(columns || "*").range(off, off + PAGE - 1).then(function (r) {
+          if (r.error) throw r.error;
+          return r.data || [];
+        });
+      })).then(function (chunks) {
+        return chunks.reduce(function (acc, c) { return acc.concat(c); }, []);
+      });
     });
   }
 
@@ -683,28 +698,99 @@
     });
   }
 
-  function criarEvento() {
-    var instituicao = $("newInstituicao").value.trim();
-    if (!instituicao) { $("newInstituicao").focus(); return; }
+  // ---------- instituições e contratos (vêm do banco de vendas) ----------
+
+  function checklistDoContrato(nroControle) {
+    return state.eventos.find(function (e) { return e.nro_controle === nroControle; });
+  }
+
+  function renderInstituicaoList() {
+    var term = state.instituicaoTerm.trim().toLowerCase();
+    var porInstituicao = {};
+    state.contratos.forEach(function (c) {
+      var inst = (c.instituicao || "").trim();
+      if (!inst) return;
+      if (!porInstituicao[inst]) porInstituicao[inst] = 0;
+      porInstituicao[inst]++;
+    });
+    var lista = Object.keys(porInstituicao)
+      .filter(function (inst) { return !term || inst.toLowerCase().indexOf(term) !== -1; })
+      .sort(function (a, b) { return a.localeCompare(b, "pt-BR"); });
+
+    if (!lista.length) {
+      $("instituicaoList").innerHTML = '<div class="card-sub">Nenhuma instituição encontrada.</div>';
+      return;
+    }
+    $("instituicaoList").innerHTML = lista.map(function (inst) {
+      var active = inst === state.instituicaoSelecionada;
+      return '<div class="evento-row' + (active ? ' active-bar' : '') + '" data-inst="' + escapeHtml(inst) + '" style="' + (active ? 'border-color:var(--series-1);' : '') + '">' +
+        '<div class="evento-info"><div class="evento-inst">' + escapeHtml(inst) + '</div></div>' +
+        '<span class="card-sub">' + porInstituicao[inst] + ' contrato(s)</span>' +
+      '</div>';
+    }).join("");
+    document.querySelectorAll("#instituicaoList .evento-row").forEach(function (row) {
+      row.addEventListener("click", function () { selecionarInstituicao(row.dataset.inst); });
+    });
+  }
+
+  function selecionarInstituicao(inst) {
+    state.instituicaoSelecionada = inst;
+    renderInstituicaoList();
+    var contratosDaInst = state.contratos.filter(function (c) { return (c.instituicao || "").trim() === inst; })
+      .sort(function (a, b) { return (b.ano_periodo || "").localeCompare(a.ano_periodo || ""); });
+    $("contratosBox").hidden = false;
+    $("contratosInstName").textContent = inst;
+    if (!contratosDaInst.length) {
+      $("contratoList").innerHTML = '<div class="card-sub">Nenhum contrato encontrado pra essa instituição.</div>';
+      return;
+    }
+    $("contratoList").innerHTML = contratosDaInst.map(function (c) {
+      var existente = checklistDoContrato(c.nro_controle);
+      var badge = existente
+        ? '<span class="status-badge ' + (existente.status === "completo" ? "completo" : "andamento") + '">' + (existente.status === "completo" ? "Checklist completo" : "Checklist em andamento") + '</span>'
+        : '<span class="status-badge andamento" style="background:var(--surface-2); color:var(--text-muted);">Começar checklist</span>';
+      return '<div class="evento-row" data-nro="' + escapeHtml(c.nro_controle) + '">' +
+        '<div class="evento-info">' +
+          '<div class="evento-inst">' + escapeHtml(c.curso || "(sem curso)") + '</div>' +
+          '<div class="evento-meta">' + escapeHtml(c.ano_periodo || "") + ' · Nº controle ' + escapeHtml(c.nro_controle) + (c.qtde_clientes ? ' · ' + c.qtde_clientes + ' alunos' : '') + '</div>' +
+        '</div>' +
+        badge +
+      '</div>';
+    }).join("");
+    document.querySelectorAll("#contratoList .evento-row").forEach(function (row) {
+      row.addEventListener("click", function () { abrirOuCriarChecklist(row.dataset.nro); });
+    });
+  }
+
+  function abrirOuCriarChecklist(nroControle) {
+    var existente = checklistDoContrato(nroControle);
+    if (existente) { openEvento(existente.id); return; }
+
+    var contrato = state.contratos.find(function (c) { return c.nro_controle === nroControle; });
+    if (!contrato) return;
     var payload = {
-      instituicao: instituicao,
-      turma: $("newTurma").value.trim() || null,
-      curso: $("newCurso").value.trim() || null,
-      data_evento: $("newData").value || null,
+      instituicao: contrato.instituicao,
+      curso: contrato.curso,
+      nro_controle: contrato.nro_controle,
       status: "em_andamento"
     };
-    var btn = $("btnNovoEvento");
-    btn.disabled = true;
     supa.from("checklist_eventos").insert(payload).select().then(function (res) {
-      btn.disabled = false;
       if (res.error || !res.data || !res.data.length) {
-        alert("Não foi possível criar o evento: " + (res.error ? res.error.message : "erro desconhecido"));
+        alert("Não foi possível criar o checklist: " + (res.error ? res.error.message : "erro desconhecido"));
         return;
       }
       state.eventos.unshift(res.data[0]);
-      $("newInstituicao").value = ""; $("newTurma").value = ""; $("newCurso").value = ""; $("newData").value = "";
+      selecionarInstituicao(state.instituicaoSelecionada);
       renderEventoList();
       openEvento(res.data[0].id);
+    });
+  }
+
+  function loadContratos() {
+    return fetchAllRows("contratos", "nro_controle,instituicao,curso,ano_periodo,status,qtde_clientes").then(function (rows) {
+      state.contratos = rows || [];
+      renderInstituicaoList();
+      if (state.instituicaoSelecionada) selecionarInstituicao(state.instituicaoSelecionada);
     });
   }
 
@@ -724,13 +810,17 @@
         if (stillThere) { openEvento(state.currentId); return; }
       }
       renderEventoList();
+      if (state.instituicaoSelecionada) selecionarInstituicao(state.instituicaoSelecionada);
     }).catch(function () {
       setStatus("err", "Falha ao atualizar");
     });
   }
 
   function init() {
-    $("btnNovoEvento").addEventListener("click", criarEvento);
+    $("searchInstituicao").addEventListener("input", function (e) {
+      state.instituicaoTerm = e.target.value;
+      renderInstituicaoList();
+    });
     $("backToList").addEventListener("click", closeForm);
     $("btnSalvar").addEventListener("click", saveEvento);
     $("searchEventos").addEventListener("input", function (e) {
@@ -755,8 +845,9 @@
       });
     })();
 
+    loadContratos();
     loadEventos(false);
-    setInterval(function () { if (!state.currentId) loadEventos(false); }, REFRESH_MS);
+    setInterval(function () { if (!state.currentId) { loadEventos(false); loadContratos(); } }, REFRESH_MS);
   }
 
   // ---- autenticação (Supabase Auth) — mesmo padrão do painel de vendas ----
