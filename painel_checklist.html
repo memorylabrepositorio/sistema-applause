@@ -742,22 +742,42 @@
     return state.eventos.find(function (e) { return e.nro_controle === nroControle; });
   }
 
+  var SEM_PERIODO = "__sem_periodo__";
+
+  // "2026-2" e "2026-02" são o mesmo período (mês sem zero à esquerda no banco);
+  // "9999-99" e afins são placeholder de contrato sem período definido.
+  function normalizeAnoPeriodo(raw) {
+    var m = (raw || "").trim().match(/^(\d{4})-(\d{1,2})$/);
+    if (!m || m[1] === "9999") return "";
+    return m[1] + "-" + (m[2].length === 1 ? "0" + m[2] : m[2]);
+  }
+
   function contratosDoAno() {
-    return state.anoSelecionado
-      ? state.contratos.filter(function (c) { return (c.ano_periodo || "") === state.anoSelecionado; })
-      : state.contratos;
+    if (!state.anoSelecionado) return state.contratos;
+    if (state.anoSelecionado === SEM_PERIODO) {
+      return state.contratos.filter(function (c) { return !normalizeAnoPeriodo(c.ano_periodo); });
+    }
+    return state.contratos.filter(function (c) { return normalizeAnoPeriodo(c.ano_periodo) === state.anoSelecionado; });
   }
 
   function populateAnoSelect() {
     var anos = {};
-    state.contratos.forEach(function (c) { if (c.ano_periodo) anos[c.ano_periodo] = true; });
+    var temSemPeriodo = false;
+    state.contratos.forEach(function (c) {
+      var norm = normalizeAnoPeriodo(c.ano_periodo);
+      if (norm) anos[norm] = true; else if (c.ano_periodo) temSemPeriodo = true;
+    });
     var lista = Object.keys(anos).sort(function (a, b) { return b.localeCompare(a, "pt-BR", { numeric: true }); });
     var select = $("anoSelect");
     var atual = state.anoSelecionado;
-    select.innerHTML = '<option value="">Todos os anos</option>' + lista.map(function (ano) {
+    var html = '<option value="">Todos os anos</option>' + lista.map(function (ano) {
       return '<option value="' + escapeHtml(ano) + '"' + (ano === atual ? ' selected' : '') + '>' + escapeHtml(ano) + '</option>';
     }).join("");
-    if (atual && lista.indexOf(atual) === -1) { select.value = ""; state.anoSelecionado = ""; }
+    if (temSemPeriodo) {
+      html += '<option value="' + SEM_PERIODO + '"' + (atual === SEM_PERIODO ? ' selected' : '') + '>Sem período definido</option>';
+    }
+    select.innerHTML = html;
+    if (atual && atual !== SEM_PERIODO && lista.indexOf(atual) === -1) { select.value = ""; state.anoSelecionado = ""; }
   }
 
   function renderInstituicaoList() {
