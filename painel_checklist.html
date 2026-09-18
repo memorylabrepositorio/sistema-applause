@@ -346,6 +346,12 @@
   .status-badge.andamento { background: color-mix(in srgb, var(--warning) 25%, transparent); color: var(--text-primary); }
   .progress-bar { width: 90px; height: 6px; border-radius: 999px; background: var(--grid); overflow: hidden; flex: none; }
   .progress-bar > div { height: 100%; background: var(--series-1); }
+  .evento-status { display: flex; align-items: center; gap: 10px; flex: none; }
+  @media (max-width: 560px) {
+    .evento-row { flex-wrap: wrap; }
+    .evento-row .evento-info { flex: 1 1 100%; min-width: 0; }
+    .evento-status { flex: 1 1 100%; justify-content: flex-end; }
+  }
   .new-evento-card { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
   .new-evento-card .form-field { min-width: 200px; flex: 1; }
   .btn-primary { background: var(--series-1); color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 700; font-size: 13.5px; cursor: pointer; }
@@ -420,9 +426,12 @@
         <div class="search-row">
           <select id="anoSelect" class="inst-select" style="max-width:150px;"><option value="">Todos os anos</option></select>
           <input type="text" id="searchInstituicao" placeholder="Buscar instituição…" style="flex:1; min-width:180px;">
-          <button type="button" class="clear-filters-btn" id="limparFiltrosChecklist">Limpar filtros</button>
         </div>
         <select id="instituicaoSelect" class="inst-select"><option value="">Carregando…</option></select>
+        <div class="filter-note-row" style="margin-top:8px;">
+          <span class="filter-note"></span>
+          <button type="button" class="clear-filters-btn" id="limparFiltrosChecklist">Limpar filtros ✕</button>
+        </div>
 
         <div id="contratosBox" hidden style="margin-top:16px;">
           <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted); margin:0 0 10px; padding-bottom:6px; border-bottom:1px solid var(--border);">
@@ -620,7 +629,7 @@
           '<div class="evento-inst">' + escapeHtml(e.instituicao) + (e.turma ? " — " + escapeHtml(e.turma) : "") + '</div>' +
           '<div class="evento-meta">' + escapeHtml(e.curso || "") + (e.data_evento ? " · " + fmtDateBR(e.data_evento) : "") + '</div>' +
         '</div>' +
-        '<div style="display:flex; align-items:center; gap:10px;">' +
+        '<div class="evento-status">' +
           '<span class="progress-bar"><div style="width:' + pct + '%"></div></span>' +
           '<span class="card-sub" style="width:34px; text-align:right;">' + pct + '%</span>' +
           '<span class="status-badge ' + (isCompleto ? "completo" : "andamento") + '">' + (isCompleto ? "Completo" : "Em andamento") + '</span>' +
