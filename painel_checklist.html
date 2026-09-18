@@ -418,7 +418,8 @@
         <h2>Começar novo checklist</h2>
         <div class="card-sub">Selecione a instituição e depois o contrato — vem direto do banco de dados</div>
         <div class="search-row">
-          <input type="text" id="searchInstituicao" placeholder="Buscar instituição…">
+          <select id="anoSelect" class="inst-select" style="max-width:180px;"><option value="">Todos os anos</option></select>
+          <input type="text" id="searchInstituicao" placeholder="Buscar instituição…" style="flex:1; min-width:180px;">
         </div>
         <select id="instituicaoSelect" class="inst-select"><option value="">Carregando…</option></select>
 
@@ -551,7 +552,7 @@
 
   var state = {
     eventos: [], currentId: null, searchTerm: "",
-    contratos: [], instituicaoTerm: "", instituicaoSelecionada: null
+    contratos: [], instituicaoTerm: "", instituicaoSelecionada: null, anoSelecionado: ""
   };
 
   function setStatus(kind, text) {
@@ -741,10 +742,28 @@
     return state.eventos.find(function (e) { return e.nro_controle === nroControle; });
   }
 
+  function contratosDoAno() {
+    return state.anoSelecionado
+      ? state.contratos.filter(function (c) { return (c.ano_periodo || "") === state.anoSelecionado; })
+      : state.contratos;
+  }
+
+  function populateAnoSelect() {
+    var anos = {};
+    state.contratos.forEach(function (c) { if (c.ano_periodo) anos[c.ano_periodo] = true; });
+    var lista = Object.keys(anos).sort(function (a, b) { return b.localeCompare(a, "pt-BR", { numeric: true }); });
+    var select = $("anoSelect");
+    var atual = state.anoSelecionado;
+    select.innerHTML = '<option value="">Todos os anos</option>' + lista.map(function (ano) {
+      return '<option value="' + escapeHtml(ano) + '"' + (ano === atual ? ' selected' : '') + '>' + escapeHtml(ano) + '</option>';
+    }).join("");
+    if (atual && lista.indexOf(atual) === -1) { select.value = ""; state.anoSelecionado = ""; }
+  }
+
   function renderInstituicaoList() {
     var term = state.instituicaoTerm.trim().toLowerCase();
     var porInstituicao = {};
-    state.contratos.forEach(function (c) {
+    contratosDoAno().forEach(function (c) {
       var inst = (c.instituicao || "").trim();
       if (!inst) return;
       if (!porInstituicao[inst]) porInstituicao[inst] = 0;
@@ -771,7 +790,7 @@
   function selecionarInstituicao(inst) {
     state.instituicaoSelecionada = inst || null;
     if (!inst) { $("contratosBox").hidden = true; return; }
-    var contratosDaInst = state.contratos.filter(function (c) { return (c.instituicao || "").trim() === inst; })
+    var contratosDaInst = contratosDoAno().filter(function (c) { return (c.instituicao || "").trim() === inst; })
       .sort(function (a, b) { return (b.ano_periodo || "").localeCompare(a.ano_periodo || ""); });
     $("contratosBox").hidden = false;
     $("contratosInstName").textContent = inst;
@@ -824,6 +843,7 @@
   function loadContratos() {
     return fetchAllRows("contratos", "nro_controle,instituicao,curso,ano_periodo,status,qtde_clientes").then(function (rows) {
       state.contratos = rows || [];
+      populateAnoSelect();
       renderInstituicaoList();
       if (state.instituicaoSelecionada) selecionarInstituicao(state.instituicaoSelecionada);
     });
@@ -858,6 +878,11 @@
     });
     $("instituicaoSelect").addEventListener("change", function (e) {
       selecionarInstituicao(e.target.value);
+    });
+    $("anoSelect").addEventListener("change", function (e) {
+      state.anoSelecionado = e.target.value;
+      renderInstituicaoList();
+      if (state.instituicaoSelecionada) selecionarInstituicao(state.instituicaoSelecionada);
     });
     $("backToList").addEventListener("click", closeForm);
     $("btnSalvar").addEventListener("click", saveEvento);

@@ -1213,9 +1213,11 @@
 
   function populateControleFilter() {
     // considers only the "Nº de controle" column itself (the contract number) — no
-    // mixing in the instituição name
+    // mixing in the instituição name. Cascaded by ano (like o filtro de mês), pra
+    // não listar contrato de outro ano quando um ano específico está selecionado.
+    var base = state.yearFilter ? state.rows.filter(function (r) { return yearOfRow(r) === state.yearFilter; }) : state.rows;
     var map = {};
-    state.rows.forEach(function (r) {
+    base.forEach(function (r) {
       var raw = r.nroControle && r.nroControle.trim();
       if (!raw) return;
       if (isSessaoEstudio(r)) return; // já coberto pelo filtro de Produtora
