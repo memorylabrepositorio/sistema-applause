@@ -744,28 +744,28 @@
 
   var SEM_PERIODO = "__sem_periodo__";
 
-  // "2026-2" e "2026-02" são o mesmo período (mês sem zero à esquerda no banco);
-  // "9999-99" e afins são placeholder de contrato sem período definido.
-  function normalizeAnoPeriodo(raw) {
+  // filtro é só por ano (não por semestre); "9999-99" e afins são placeholder
+  // de contrato sem período definido, então ficam fora da lista de anos.
+  function anoDoContrato(raw) {
     var m = (raw || "").trim().match(/^(\d{4})-(\d{1,2})$/);
     if (!m || m[1] === "9999") return "";
-    return m[1] + "-" + (m[2].length === 1 ? "0" + m[2] : m[2]);
+    return m[1];
   }
 
   function contratosDoAno() {
     if (!state.anoSelecionado) return state.contratos;
     if (state.anoSelecionado === SEM_PERIODO) {
-      return state.contratos.filter(function (c) { return !normalizeAnoPeriodo(c.ano_periodo); });
+      return state.contratos.filter(function (c) { return !anoDoContrato(c.ano_periodo); });
     }
-    return state.contratos.filter(function (c) { return normalizeAnoPeriodo(c.ano_periodo) === state.anoSelecionado; });
+    return state.contratos.filter(function (c) { return anoDoContrato(c.ano_periodo) === state.anoSelecionado; });
   }
 
   function populateAnoSelect() {
     var anos = {};
     var temSemPeriodo = false;
     state.contratos.forEach(function (c) {
-      var norm = normalizeAnoPeriodo(c.ano_periodo);
-      if (norm) anos[norm] = true; else if (c.ano_periodo) temSemPeriodo = true;
+      var ano = anoDoContrato(c.ano_periodo);
+      if (ano) anos[ano] = true; else if (c.ano_periodo) temSemPeriodo = true;
     });
     var lista = Object.keys(anos).sort(function (a, b) { return b.localeCompare(a, "pt-BR", { numeric: true }); });
     var select = $("anoSelect");
