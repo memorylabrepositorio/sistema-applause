@@ -413,9 +413,14 @@
       </div>
 
       <div class="card full" id="estudioCompareCard" hidden>
-        <h2>Applause × Sessão Estúdio — <span id="estudioCompareName"></span></h2>
-        <div class="card-sub">Todos os indicadores lado a lado por produtora, com a diferença entre os dois · selecione um estúdio no filtro acima pra ver só dele</div>
-        <div id="estudioCompareBody"></div>
+        <div class="collapsible-header" id="estudioCompareToggle" role="button" tabindex="0">
+          <div>
+            <h2>Applause × Sessão Estúdio — <span id="estudioCompareName"></span></h2>
+            <div class="card-sub">Todos os indicadores lado a lado por produtora, com a diferença entre os dois · selecione um estúdio no filtro acima pra ver só dele · clique para expandir</div>
+          </div>
+          <span class="chevron" id="estudioCompareChevron">▸</span>
+        </div>
+        <div class="collapsible-body" id="estudioCompareBody" hidden></div>
       </div>
 
       <div class="card full">
@@ -1585,6 +1590,16 @@
     $("searchUnmatched").addEventListener("input", function (e) {
       state.unmatchedFilter = e.target.value;
       renderUnmatchedTable(state.lastFilteredRows);
+    });
+
+    $("estudioCompareToggle").addEventListener("click", function () {
+      var willOpen = $("estudioCompareBody").hidden;
+      $("estudioCompareBody").hidden = !willOpen;
+      $("estudioCompareToggle").classList.toggle("open", willOpen);
+      $("estudioCompareChevron").textContent = willOpen ? "▾" : "▸";
+    });
+    $("estudioCompareToggle").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("estudioCompareToggle").click(); }
     });
 
     $("unmatchedToggle").addEventListener("click", function () {
