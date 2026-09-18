@@ -163,7 +163,7 @@
     background: var(--card-bg); color: var(--text-primary); width: 100%;
   }
   .inst-select {
-    font: inherit; font-size: 13.5px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+    font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border);
     background: var(--card-bg); color: var(--text-primary); width: 100%;
   }
   .filter-note-row {
@@ -418,8 +418,9 @@
         <h2>Começar novo checklist</h2>
         <div class="card-sub">Selecione a instituição e depois o contrato — vem direto do banco de dados</div>
         <div class="search-row">
-          <select id="anoSelect" class="inst-select" style="max-width:180px;"><option value="">Todos os anos</option></select>
+          <select id="anoSelect" class="inst-select" style="max-width:150px;"><option value="">Todos os anos</option></select>
           <input type="text" id="searchInstituicao" placeholder="Buscar instituição…" style="flex:1; min-width:180px;">
+          <button type="button" class="clear-filters-btn" id="limparFiltrosChecklist">Limpar filtros</button>
         </div>
         <select id="instituicaoSelect" class="inst-select"><option value="">Carregando…</option></select>
 
@@ -903,6 +904,15 @@
       state.anoSelecionado = e.target.value;
       renderInstituicaoList();
       if (state.instituicaoSelecionada) selecionarInstituicao(state.instituicaoSelecionada);
+    });
+    $("limparFiltrosChecklist").addEventListener("click", function () {
+      state.anoSelecionado = "";
+      state.instituicaoTerm = "";
+      state.instituicaoSelecionada = null;
+      $("searchInstituicao").value = "";
+      $("contratosBox").hidden = true;
+      populateAnoSelect();
+      renderInstituicaoList();
     });
     $("backToList").addEventListener("click", closeForm);
     $("btnSalvar").addEventListener("click", saveEvento);
