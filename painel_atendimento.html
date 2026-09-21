@@ -305,6 +305,11 @@
     vertical-align: middle;
   }
 
+  .status-group { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .status-group:last-child { border-bottom: none; padding-bottom: 0; }
+  .status-group:first-child { padding-top: 0; }
+  .status-group .collapsible-body { margin-top: 12px; }
+
   /* card header with contextual back button */
   .card-header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .back-btn {
@@ -447,8 +452,8 @@
       <div class="kpi-row" id="kpiRow"></div>
 
       <div class="card full">
-        <h2>Alunos</h2>
-        <div class="card-sub">Filtre por instituição e status — os dados vêm direto do banco de vendas (clientes, contratos e agenda)</div>
+        <h2>Alunos por status</h2>
+        <div class="card-sub">Agrupados por status — clique em um status para expandir. Os dados vêm direto do banco de vendas (clientes, contratos e agenda)</div>
         <div class="filters-row" id="filtersRow">
           <div class="filter-field">
             <label for="filtroAno">Ano</label>
@@ -457,10 +462,6 @@
           <div class="filter-field">
             <label for="filtroInstituicao">Instituição</label>
             <select id="filtroInstituicao"><option value="">Todas</option></select>
-          </div>
-          <div class="filter-field">
-            <label for="filtroStatus">Status do aluno</label>
-            <select id="filtroStatus"><option value="">Todos</option></select>
           </div>
           <div class="filter-field">
             <label for="filtroAgendado">Agendado</label>
@@ -481,15 +482,7 @@
         <div class="search-row">
           <input type="text" id="searchAluno" placeholder="Buscar por nome, CPF ou telefone…">
         </div>
-        <div class="table-wrap">
-          <table class="data-tbl" id="tblAlunos">
-            <thead><tr>
-              <th>Nome</th><th>CPF</th><th>Telefone</th><th>Instituição</th><th>Curso</th>
-              <th>Status</th><th>Agendado</th><th>Atendido</th><th>Tarefas</th>
-            </tr></thead>
-            <tbody id="tblAlunosBody"><tr><td colspan="9" class="card-sub">Carregando…</td></tr></tbody>
-          </table>
-        </div>
+        <div id="statusGroups"><div class="skel skel-row"></div><div class="skel skel-row"></div></div>
         <div class="card-sub" id="tblNote" style="margin-top:10px;"></div>
       </div>
 
@@ -564,14 +557,25 @@
   var SUPABASE_ANON_KEY = "sb_publishable_Kp7CCPGlbiVh9jOCPqJPxg_znpsgUTJ";
   var REFRESH_MS = 60000;
 
-  var RENDER_CAP = 500;
-
   var state = {
     contratos: [], clientes: [], agenda: [], notas: [], tarefas: [],
     alunos: [], filtrados: [],
-    filtroAno: "", filtroInstituicao: "", filtroStatus: "", filtroAgendado: "", filtroAtendido: "", searchTerm: "",
+    filtroAno: "", filtroInstituicao: "", filtroAgendado: "", filtroAtendido: "", searchTerm: "",
+    statusExpandido: {},
     drawerCodigo: null, currentUserEmail: ""
   };
+
+  // Ordem de exibição dos grupos de status (etapa da jornada do aluno).
+  // Status que existirem no banco mas não estiverem nessa lista aparecem no
+  // final, em ordem alfabética.
+  var STATUS_ORDER = [
+    "CADASTRADO", "AGENDADO", "ATENDIDO", "ATIVO",
+    "CONGELADO", "CONGELAMENTO", "DESISTENTE", "CANCELADO", "REPROVADO", "FALECIDO"
+  ];
+  function statusRank(s) {
+    var idx = STATUS_ORDER.indexOf(String(s || "").toUpperCase());
+    return idx === -1 ? 999 : idx;
+  }
 
   var SEM_PERIODO = "__sem_periodo__";
 
@@ -722,13 +726,9 @@
     renderAnoOptions();
 
     var instituicoes = {};
-    var statusSet = {};
     var base = alunosDoAno();
     base.forEach(function (a) {
       if (a.instituicao) instituicoes[a.instituicao] = (instituicoes[a.instituicao] || 0) + 1;
-    });
-    state.alunos.forEach(function (a) {
-      if (a.status) statusSet[a.status] = true;
     });
     var instList = Object.keys(instituicoes).sort(function (a, b) { return a.localeCompare(b, "pt-BR"); });
     var selInst = $("filtroInstituicao");
@@ -737,13 +737,6 @@
       return '<option value="' + escapeHtml(i) + '"' + (i === atualInst ? " selected" : "") + '>' + escapeHtml(i) + " (" + instituicoes[i] + ")</option>";
     }).join("");
     if (atualInst && instList.indexOf(atualInst) === -1) { selInst.value = ""; state.filtroInstituicao = ""; }
-
-    var statusList = Object.keys(statusSet).sort();
-    var selStatus = $("filtroStatus");
-    var atualStatus = state.filtroStatus;
-    selStatus.innerHTML = '<option value="">Todos</option>' + statusList.map(function (s) {
-      return '<option value="' + escapeHtml(s) + '"' + (s === atualStatus ? " selected" : "") + '>' + escapeHtml(s) + "</option>";
-    }).join("");
   }
 
   function applyFilters() {
@@ -752,7 +745,6 @@
       if (state.filtroAno === SEM_PERIODO) { if (anoDoAluno(a.ano_periodo)) return false; }
       else if (state.filtroAno && anoDoAluno(a.ano_periodo) !== state.filtroAno) return false;
       if (state.filtroInstituicao && a.instituicao !== state.filtroInstituicao) return false;
-      if (state.filtroStatus && a.status !== state.filtroStatus) return false;
       if (state.filtroAgendado === "sim" && !a.agendado) return false;
       if (state.filtroAgendado === "nao" && a.agendado) return false;
       if (state.filtroAtendido === "sim" && !a.atendido) return false;
@@ -764,7 +756,7 @@
       return true;
     });
     renderKpis();
-    renderTabela();
+    renderAlunosPorStatus();
   }
 
   function renderKpis() {
@@ -783,38 +775,78 @@
     }).join("");
   }
 
-  function renderTabela() {
+  function renderAlunosPorStatus() {
     var list = state.filtrados;
-    var capped = list.slice(0, RENDER_CAP);
+    var container = $("statusGroups");
     if (!list.length) {
-      $("tblAlunosBody").innerHTML = '<tr><td colspan="9" class="card-sub">Nenhum aluno encontrado com esses filtros.</td></tr>';
+      container.innerHTML = '<div class="empty-note">Nenhum aluno encontrado com esses filtros.</div>';
       $("tblNote").textContent = "";
       return;
     }
-    $("tblAlunosBody").innerHTML = capped.map(function (a) {
-      var agBadge = a.agendado
-        ? '<span class="pill-tag ok">Sim' + (a.ultimoAgendamento ? " · " + fmtDateBR(a.ultimoAgendamento.data) : "") + '</span>'
-        : '<span class="pill-tag no">Não</span>';
-      var atBadge = a.atendido ? '<span class="pill-tag ok">Sim</span>' : '<span class="pill-tag no">Não</span>';
-      var tarefasCell = a.tarefasPendentes ? '<span class="pill-tag warn">' + a.tarefasPendentes + '</span>' : '<span class="card-sub">—</span>';
-      return '<tr class="clickable" data-codigo="' + a.codigo + '">' +
-        '<td>' + escapeHtml(a.nome) + '</td>' +
-        '<td>' + escapeHtml(a.cpf || "") + '</td>' +
-        '<td>' + escapeHtml(a.telefone || "") + '</td>' +
-        '<td>' + escapeHtml(a.instituicao || "") + '</td>' +
-        '<td>' + escapeHtml(a.curso || "") + '</td>' +
-        '<td>' + escapeHtml(a.status || "") + '</td>' +
-        '<td>' + agBadge + '</td>' +
-        '<td>' + atBadge + '</td>' +
-        '<td>' + tarefasCell + '</td>' +
-      '</tr>';
+
+    var grupos = {};
+    list.forEach(function (a) {
+      var s = a.status || "Sem status";
+      if (!grupos[s]) grupos[s] = [];
+      grupos[s].push(a);
+    });
+    var chaves = Object.keys(grupos).sort(function (x, y) {
+      var rx = statusRank(x), ry = statusRank(y);
+      if (rx !== ry) return rx - ry;
+      return x.localeCompare(y, "pt-BR");
+    });
+
+    var GROUP_CAP = 300;
+    container.innerHTML = chaves.map(function (status) {
+      var alunos = grupos[status];
+      var aberto = !!state.statusExpandido[status];
+      var capped = alunos.slice(0, GROUP_CAP);
+      var rowsHtml = capped.map(function (a) {
+        var agBadge = a.agendado
+          ? '<span class="pill-tag ok">Sim' + (a.ultimoAgendamento ? " · " + fmtDateBR(a.ultimoAgendamento.data) : "") + '</span>'
+          : '<span class="pill-tag no">Não</span>';
+        var atBadge = a.atendido ? '<span class="pill-tag ok">Sim</span>' : '<span class="pill-tag no">Não</span>';
+        var tarefasCell = a.tarefasPendentes ? '<span class="pill-tag warn">' + a.tarefasPendentes + '</span>' : '<span class="card-sub">—</span>';
+        return '<tr class="clickable" data-codigo="' + a.codigo + '">' +
+          '<td>' + escapeHtml(a.nome) + '</td>' +
+          '<td>' + escapeHtml(a.cpf || "") + '</td>' +
+          '<td>' + escapeHtml(a.telefone || "") + '</td>' +
+          '<td>' + escapeHtml(a.instituicao || "") + '</td>' +
+          '<td>' + escapeHtml(a.curso || "") + '</td>' +
+          '<td>' + agBadge + '</td>' +
+          '<td>' + atBadge + '</td>' +
+          '<td>' + tarefasCell + '</td>' +
+        '</tr>';
+      }).join("");
+      var nota = alunos.length > GROUP_CAP
+        ? '<div class="card-sub" style="margin-top:8px;">Mostrando ' + GROUP_CAP + ' de ' + alunos.length.toLocaleString("pt-BR") + ' — refine a busca para ver mais. A exportação sempre inclui todos.</div>'
+        : "";
+      return '<div class="status-group" data-status="' + escapeHtml(status) + '">' +
+        '<div class="collapsible-header' + (aberto ? " open" : "") + '" data-status-toggle="' + escapeHtml(status) + '">' +
+          '<h2 style="margin:0;">' + escapeHtml(status) + '<span class="count-badge">' + alunos.length.toLocaleString("pt-BR") + '</span></h2>' +
+          '<span class="chevron">▸</span>' +
+        '</div>' +
+        '<div class="collapsible-body" style="' + (aberto ? "" : "display:none;") + '">' +
+          '<div class="table-wrap"><table class="data-tbl"><thead><tr>' +
+            '<th>Nome</th><th>CPF</th><th>Telefone</th><th>Instituição</th><th>Curso</th><th>Agendado</th><th>Atendido</th><th>Tarefas</th>' +
+          '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
+          nota +
+        '</div>' +
+      '</div>';
     }).join("");
-    document.querySelectorAll("#tblAlunosBody tr.clickable").forEach(function (row) {
+
+    container.querySelectorAll(".collapsible-header").forEach(function (header) {
+      header.addEventListener("click", function () {
+        var status = header.dataset.statusToggle;
+        state.statusExpandido[status] = !state.statusExpandido[status];
+        renderAlunosPorStatus();
+      });
+    });
+    container.querySelectorAll("tr.clickable").forEach(function (row) {
       row.addEventListener("click", function () { openDrawer(Number(row.dataset.codigo)); });
     });
-    $("tblNote").textContent = list.length > RENDER_CAP
-      ? ("Mostrando " + RENDER_CAP + " de " + list.length.toLocaleString("pt-BR") + " resultados — refine a busca para ver mais. A exportação sempre inclui todos os " + list.length.toLocaleString("pt-BR") + ".")
-      : (list.length.toLocaleString("pt-BR") + " aluno(s) encontrado(s).");
+
+    $("tblNote").textContent = list.length.toLocaleString("pt-BR") + " aluno(s) no total, em " + chaves.length + " status.";
   }
 
   // ---------- exportação CSV ----------
@@ -1052,12 +1084,11 @@
       applyFilters();
     });
     $("filtroInstituicao").addEventListener("change", function (e) { state.filtroInstituicao = e.target.value; applyFilters(); });
-    $("filtroStatus").addEventListener("change", function (e) { state.filtroStatus = e.target.value; applyFilters(); });
     $("filtroAgendado").addEventListener("change", function (e) { state.filtroAgendado = e.target.value; applyFilters(); });
     $("filtroAtendido").addEventListener("change", function (e) { state.filtroAtendido = e.target.value; applyFilters(); });
     $("searchAluno").addEventListener("input", function (e) { state.searchTerm = e.target.value; applyFilters(); });
     $("clearFiltersBtn").addEventListener("click", function () {
-      state.filtroAno = ""; state.filtroInstituicao = ""; state.filtroStatus = ""; state.filtroAgendado = ""; state.filtroAtendido = ""; state.searchTerm = "";
+      state.filtroAno = ""; state.filtroInstituicao = ""; state.filtroAgendado = ""; state.filtroAtendido = ""; state.searchTerm = "";
       $("filtroAgendado").value = ""; $("filtroAtendido").value = ""; $("searchAluno").value = "";
       renderFiltrosOptions();
       applyFilters();
