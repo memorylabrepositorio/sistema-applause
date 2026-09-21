@@ -486,6 +486,25 @@
         <div class="card-sub" id="tblNote" style="margin-top:10px;"></div>
       </div>
 
+      <div class="section-label">Pendências</div>
+
+      <div class="card full">
+        <div class="collapsible-header" id="orfaosToggle" role="button" tabindex="0">
+          <div>
+            <h2>Agendamentos sem aluno correspondente <span class="count-badge" id="orfaosBadge"></span></h2>
+            <div class="card-sub">Registros da agenda cujo nome/nº de controle não bateu com nenhum cliente cadastrado — provável erro de digitação · clique para expandir</div>
+          </div>
+          <span class="chevron" id="orfaosChevron">▸</span>
+        </div>
+        <div class="collapsible-body" id="orfaosBody" hidden>
+          <div class="search-row">
+            <input type="text" id="searchOrfaos" placeholder="Buscar por nome ou nº de controle…">
+            <span class="count-chip" id="orfaosCount"></span>
+          </div>
+          <div class="table-wrap"><table class="data-tbl" id="tblOrfaos"></table></div>
+        </div>
+      </div>
+
       <div class="card full">
         <div class="card-header-row">
           <div>
@@ -559,9 +578,9 @@
 
   var state = {
     contratos: [], clientes: [], agenda: [], notas: [], tarefas: [],
-    alunos: [], filtrados: [],
+    alunos: [], filtrados: [], agendamentosOrfaos: [],
     filtroAno: "", filtroInstituicao: "", filtroAgendado: "", filtroAtendido: "", searchTerm: "",
-    statusExpandido: {},
+    statusExpandido: {}, sort: { key: "nome", dir: "asc" }, orfaosFilter: "",
     drawerCodigo: null, currentUserEmail: ""
   };
 
@@ -575,6 +594,32 @@
   function statusRank(s) {
     var idx = STATUS_ORDER.indexOf(String(s || "").toUpperCase());
     return idx === -1 ? 999 : idx;
+  }
+
+  // Colunas ordenáveis de cada tabela de status (mesmo padrão de
+  // painel_vendas_publico.html: th.sortable + data-key + seta).
+  var ALUNO_COLS = [
+    { key: "nome", label: "Nome" },
+    { key: "cpf", label: "CPF" },
+    { key: "telefone", label: "Telefone" },
+    { key: "instituicao", label: "Instituição" },
+    { key: "curso", label: "Curso" },
+    { key: "agendado", label: "Agendado" },
+    { key: "atendido", label: "Atendido" },
+    { key: "tarefasPendentes", label: "Tarefas", num: true }
+  ];
+  function sortAlunos(list) {
+    var key = state.sort.key, dir = state.sort.dir;
+    return list.slice().sort(function (a, b) {
+      var av = a[key], bv = b[key];
+      if (typeof av === "boolean") { av = av ? 1 : 0; bv = bv ? 1 : 0; }
+      if (typeof av === "string" || typeof bv === "string") {
+        av = av || ""; bv = bv || "";
+        return dir === "asc" ? av.localeCompare(bv, "pt-BR") : bv.localeCompare(av, "pt-BR");
+      }
+      av = av || 0; bv = bv || 0;
+      return dir === "asc" ? av - bv : bv - av;
+    });
   }
 
   var SEM_PERIODO = "__sem_periodo__";
@@ -694,6 +739,17 @@
         tarefas: tarefas, tarefasPendentes: pendentes.length
       };
     });
+
+    // agendamentos cuja chave (nº de controle + nome, normalizado) não bate
+    // com nenhum cliente cadastrado — provável erro de digitação no momento
+    // do agendamento, que faz o registro sumir silenciosamente do painel.
+    var clienteKeys = {};
+    state.clientes.forEach(function (c) {
+      clienteKeys[chaveAlunoAgenda(c.nro_controle, c.nome_cliente)] = true;
+    });
+    state.agendamentosOrfaos = state.agenda.filter(function (a) {
+      return !clienteKeys[chaveAlunoAgenda(a.nro_controle_cliente, a.nome_cliente)];
+    });
   }
 
   function alunoPorCodigo(codigo) {
@@ -797,8 +853,13 @@
     });
 
     var GROUP_CAP = 300;
+    var theadHtml = "<thead><tr>" + ALUNO_COLS.map(function (c) {
+      var arrow = state.sort.key === c.key ? (state.sort.dir === "asc" ? "▲" : "▼") : "";
+      return '<th class="sortable' + (c.num ? " num" : "") + '" data-key="' + c.key + '">' + c.label + (arrow ? '<span class="arrow">' + arrow + '</span>' : '') + '</th>';
+    }).join("") + "</tr></thead>";
+
     container.innerHTML = chaves.map(function (status) {
-      var alunos = grupos[status];
+      var alunos = sortAlunos(grupos[status]);
       var aberto = !!state.statusExpandido[status];
       var capped = alunos.slice(0, GROUP_CAP);
       var rowsHtml = capped.map(function (a) {
@@ -827,9 +888,7 @@
           '<span class="chevron">▸</span>' +
         '</div>' +
         '<div class="collapsible-body" style="' + (aberto ? "" : "display:none;") + '">' +
-          '<div class="table-wrap"><table class="data-tbl"><thead><tr>' +
-            '<th>Nome</th><th>CPF</th><th>Telefone</th><th>Instituição</th><th>Curso</th><th>Agendado</th><th>Atendido</th><th>Tarefas</th>' +
-          '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
+          '<div class="table-wrap"><table class="data-tbl">' + theadHtml + '<tbody>' + rowsHtml + '</tbody></table></div>' +
           nota +
         '</div>' +
       '</div>';
@@ -839,6 +898,14 @@
       header.addEventListener("click", function () {
         var status = header.dataset.statusToggle;
         state.statusExpandido[status] = !state.statusExpandido[status];
+        renderAlunosPorStatus();
+      });
+    });
+    container.querySelectorAll("th.sortable").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var k = th.getAttribute("data-key");
+        if (state.sort.key === k) state.sort.dir = state.sort.dir === "asc" ? "desc" : "asc";
+        else state.sort = { key: k, dir: "asc" };
         renderAlunosPorStatus();
       });
     });
@@ -921,6 +988,37 @@
         concluirTarefa(Number(btn.dataset.tid));
       });
     });
+  }
+
+  // ---------- agendamentos órfãos (sem cliente correspondente) ----------
+
+  function renderOrfaos() {
+    var rows = state.agendamentosOrfaos || [];
+    $("orfaosBadge").textContent = rows.length;
+    var term = state.orfaosFilter.trim().toLowerCase();
+    var filtered = term ? rows.filter(function (a) {
+      var alvo = (a.nome_cliente || "") + " " + (a.nro_controle_cliente || "");
+      return alvo.toLowerCase().indexOf(term) !== -1;
+    }) : rows;
+    $("orfaosCount").textContent = filtered.length.toLocaleString("pt-BR") + " de " + rows.length.toLocaleString("pt-BR");
+
+    var thead = "<thead><tr><th>Data</th><th>Horário</th><th>Studio</th><th>Nome na agenda</th><th>Nº controle informado</th><th>Status atendimento</th></tr></thead>";
+    var body;
+    if (!filtered.length) {
+      body = '<tbody><tr><td class="empty-note">' + (rows.length ? "Nenhum resultado para essa busca." : "Nenhum agendamento órfão encontrado. 🎉") + '</td></tr></tbody>';
+    } else {
+      body = "<tbody>" + filtered.slice(0, 300).map(function (a) {
+        return "<tr>" +
+          "<td>" + escapeHtml(fmtDateBR(a.data)) + "</td>" +
+          "<td>" + escapeHtml(a.horario || "") + "</td>" +
+          "<td>" + escapeHtml(a.studio || "") + "</td>" +
+          "<td>" + escapeHtml(a.nome_cliente || "") + "</td>" +
+          "<td>" + escapeHtml(a.nro_controle_cliente || "") + "</td>" +
+          "<td>" + escapeHtml(a.status_atend || "") + "</td>" +
+        "</tr>";
+      }).join("") + "</tbody>";
+    }
+    $("tblOrfaos").innerHTML = thead + body;
   }
 
   // ---------- ficha do aluno (drawer) ----------
@@ -1070,6 +1168,7 @@
       renderFiltrosOptions();
       applyFilters();
       renderTarefasGlobais();
+      renderOrfaos();
       setStatus("ok", "Atualizado " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
     }).catch(function (err) {
       setStatus("err", "Falha ao carregar");
@@ -1099,6 +1198,16 @@
     $("drawerBackdrop").addEventListener("click", closeDrawer);
     $("btnAddNota").addEventListener("click", addNota);
     $("btnAddTarefa").addEventListener("click", addTarefa);
+    $("orfaosToggle").addEventListener("click", function () {
+      var willOpen = $("orfaosBody").hidden;
+      $("orfaosBody").hidden = !willOpen;
+      $("orfaosToggle").classList.toggle("open", willOpen);
+      $("orfaosChevron").textContent = willOpen ? "▾" : "▸";
+    });
+    $("orfaosToggle").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("orfaosToggle").click(); }
+    });
+    $("searchOrfaos").addEventListener("input", function (e) { state.orfaosFilter = e.target.value; renderOrfaos(); });
 
     (function () {
       var toggleBtn = $("themeToggle");
