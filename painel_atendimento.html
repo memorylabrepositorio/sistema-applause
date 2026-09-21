@@ -451,6 +451,10 @@
         <div class="card-sub">Filtre por instituição e status — os dados vêm direto do banco de vendas (clientes, contratos e agenda)</div>
         <div class="filters-row" id="filtersRow">
           <div class="filter-field">
+            <label for="filtroAno">Ano</label>
+            <select id="filtroAno"><option value="">Todos os anos</option></select>
+          </div>
+          <div class="filter-field">
             <label for="filtroInstituicao">Instituição</label>
             <select id="filtroInstituicao"><option value="">Todas</option></select>
           </div>
@@ -565,9 +569,27 @@
   var state = {
     contratos: [], clientes: [], agenda: [], notas: [], tarefas: [],
     alunos: [], filtrados: [],
-    filtroInstituicao: "", filtroStatus: "", filtroAgendado: "", filtroAtendido: "", searchTerm: "",
+    filtroAno: "", filtroInstituicao: "", filtroStatus: "", filtroAgendado: "", filtroAtendido: "", searchTerm: "",
     drawerCodigo: null, currentUserEmail: ""
   };
+
+  var SEM_PERIODO = "__sem_periodo__";
+
+  // filtro é só por ano (não por semestre); "9999-99" e afins são placeholder
+  // de contrato sem período definido, então ficam fora da lista de anos.
+  function anoDoAluno(raw) {
+    var m = (raw || "").trim().match(/^(\d{4})-(\d{1,2})$/);
+    if (!m || m[1] === "9999") return "";
+    return m[1];
+  }
+
+  function alunosDoAno() {
+    if (!state.filtroAno) return state.alunos;
+    if (state.filtroAno === SEM_PERIODO) {
+      return state.alunos.filter(function (a) { return !anoDoAluno(a.ano_periodo); });
+    }
+    return state.alunos.filter(function (a) { return anoDoAluno(a.ano_periodo) === state.filtroAno; });
+  }
 
   function setStatus(kind, text) {
     var pill = $("statusPill"), dot = $("statusDot");
@@ -676,11 +698,36 @@
 
   // ---------- filtros ----------
 
+  function renderAnoOptions() {
+    var anos = {};
+    var temSemPeriodo = false;
+    state.alunos.forEach(function (a) {
+      var ano = anoDoAluno(a.ano_periodo);
+      if (ano) anos[ano] = true; else if (a.ano_periodo) temSemPeriodo = true;
+    });
+    var lista = Object.keys(anos).sort(function (a, b) { return b.localeCompare(a, "pt-BR", { numeric: true }); });
+    var select = $("filtroAno");
+    var atual = state.filtroAno;
+    var html = '<option value="">Todos os anos</option>' + lista.map(function (ano) {
+      return '<option value="' + escapeHtml(ano) + '"' + (ano === atual ? " selected" : "") + '>' + escapeHtml(ano) + "</option>";
+    }).join("");
+    if (temSemPeriodo) {
+      html += '<option value="' + SEM_PERIODO + '"' + (atual === SEM_PERIODO ? " selected" : "") + '>Sem período definido</option>';
+    }
+    select.innerHTML = html;
+    if (atual && atual !== SEM_PERIODO && lista.indexOf(atual) === -1) { select.value = ""; state.filtroAno = ""; }
+  }
+
   function renderFiltrosOptions() {
+    renderAnoOptions();
+
     var instituicoes = {};
     var statusSet = {};
-    state.alunos.forEach(function (a) {
+    var base = alunosDoAno();
+    base.forEach(function (a) {
       if (a.instituicao) instituicoes[a.instituicao] = (instituicoes[a.instituicao] || 0) + 1;
+    });
+    state.alunos.forEach(function (a) {
       if (a.status) statusSet[a.status] = true;
     });
     var instList = Object.keys(instituicoes).sort(function (a, b) { return a.localeCompare(b, "pt-BR"); });
@@ -689,6 +736,7 @@
     selInst.innerHTML = '<option value="">Todas</option>' + instList.map(function (i) {
       return '<option value="' + escapeHtml(i) + '"' + (i === atualInst ? " selected" : "") + '>' + escapeHtml(i) + " (" + instituicoes[i] + ")</option>";
     }).join("");
+    if (atualInst && instList.indexOf(atualInst) === -1) { selInst.value = ""; state.filtroInstituicao = ""; }
 
     var statusList = Object.keys(statusSet).sort();
     var selStatus = $("filtroStatus");
@@ -701,6 +749,8 @@
   function applyFilters() {
     var term = state.searchTerm.trim().toLowerCase();
     state.filtrados = state.alunos.filter(function (a) {
+      if (state.filtroAno === SEM_PERIODO) { if (anoDoAluno(a.ano_periodo)) return false; }
+      else if (state.filtroAno && anoDoAluno(a.ano_periodo) !== state.filtroAno) return false;
       if (state.filtroInstituicao && a.instituicao !== state.filtroInstituicao) return false;
       if (state.filtroStatus && a.status !== state.filtroStatus) return false;
       if (state.filtroAgendado === "sim" && !a.agendado) return false;
@@ -996,14 +1046,20 @@
   }
 
   function init() {
+    $("filtroAno").addEventListener("change", function (e) {
+      state.filtroAno = e.target.value;
+      renderFiltrosOptions();
+      applyFilters();
+    });
     $("filtroInstituicao").addEventListener("change", function (e) { state.filtroInstituicao = e.target.value; applyFilters(); });
     $("filtroStatus").addEventListener("change", function (e) { state.filtroStatus = e.target.value; applyFilters(); });
     $("filtroAgendado").addEventListener("change", function (e) { state.filtroAgendado = e.target.value; applyFilters(); });
     $("filtroAtendido").addEventListener("change", function (e) { state.filtroAtendido = e.target.value; applyFilters(); });
     $("searchAluno").addEventListener("input", function (e) { state.searchTerm = e.target.value; applyFilters(); });
     $("clearFiltersBtn").addEventListener("click", function () {
-      state.filtroInstituicao = ""; state.filtroStatus = ""; state.filtroAgendado = ""; state.filtroAtendido = ""; state.searchTerm = "";
-      $("filtroInstituicao").value = ""; $("filtroStatus").value = ""; $("filtroAgendado").value = ""; $("filtroAtendido").value = ""; $("searchAluno").value = "";
+      state.filtroAno = ""; state.filtroInstituicao = ""; state.filtroStatus = ""; state.filtroAgendado = ""; state.filtroAtendido = ""; state.searchTerm = "";
+      $("filtroAgendado").value = ""; $("filtroAtendido").value = ""; $("searchAluno").value = "";
+      renderFiltrosOptions();
       applyFilters();
     });
     $("exportBtn").addEventListener("click", exportCSV);
