@@ -255,9 +255,7 @@
   table.data-tbl th.sortable { cursor: pointer; user-select: none; }
   table.data-tbl th.sortable:hover { color: var(--text-secondary); }
   table.data-tbl th .arrow { font-size: 9px; margin-left: 3px; opacity: .7; }
-  table.data-tbl th.groupable { color: var(--text-secondary); }
-  table.data-tbl th.groupable .group-icon { font-size: 10px; margin-left: 4px; opacity: .55; }
-  table.data-tbl th.groupable:hover .group-icon { opacity: 1; color: var(--series-2); }
+  table.data-tbl td.wrap, table.data-tbl th.wrap { white-space: normal; max-width: 170px; word-break: break-word; }
   table.data-tbl tr.clickable { cursor: pointer; }
   table.data-tbl tr.clickable:hover td { background: var(--surface-1); }
   table.data-tbl tr.active-row td { background: color-mix(in srgb, var(--series-1) 14%, transparent); }
@@ -455,8 +453,8 @@
       <div class="kpi-row" id="kpiRow"></div>
 
       <div class="card full">
-        <h2 id="alunosGroupTitle">Alunos por status</h2>
-        <div class="card-sub">Clique no cabeçalho de uma coluna (Instituição, Curso, Status, Agendado ou Atendido) para reagrupar por ela · clique num grupo para expandir. Os dados vêm direto do banco de vendas (clientes, contratos e agenda)</div>
+        <h2>Alunos</h2>
+        <div class="card-sub">Filtre por instituição e status — clique no cabeçalho de uma coluna para ordenar. Os dados vêm direto do banco de vendas (clientes, contratos e agenda)</div>
         <div class="filters-row" id="filtersRow">
           <div class="filter-field">
             <label for="filtroAno">Ano</label>
@@ -485,7 +483,7 @@
         <div class="search-row">
           <input type="text" id="searchAluno" placeholder="Buscar por nome, CPF ou telefone…">
         </div>
-        <div id="statusGroups"><div class="skel skel-row"></div><div class="skel skel-row"></div></div>
+        <div class="table-wrap"><table class="data-tbl" id="tblAlunos"><tbody><tr><td class="card-sub">Carregando…</td></tr></tbody></table></div>
         <div class="card-sub" id="tblNote" style="margin-top:10px;"></div>
       </div>
 
@@ -583,67 +581,21 @@
     contratos: [], clientes: [], agenda: [], notas: [], tarefas: [],
     alunos: [], filtrados: [], agendamentosOrfaos: [],
     filtroAno: "", filtroInstituicao: "", filtroAgendado: "", filtroAtendido: "", searchTerm: "",
-    grupoExpandido: {}, groupBy: "status", sort: { key: "nome", dir: "asc" }, orfaosFilter: "",
+    sort: { key: "nome", dir: "asc" }, orfaosFilter: "",
     drawerCodigo: null, currentUserEmail: ""
   };
 
-  // Ordem de exibição dos grupos de status (etapa da jornada do aluno).
-  // Status que existirem no banco mas não estiverem nessa lista aparecem no
-  // final, em ordem alfabética.
-  var STATUS_ORDER = [
-    "CADASTRADO", "AGENDADO", "ATENDIDO", "ATIVO",
-    "CONGELADO", "CONGELAMENTO", "DESISTENTE", "CANCELADO", "REPROVADO", "FALECIDO"
-  ];
-  function statusRank(s) {
-    var idx = STATUS_ORDER.indexOf(String(s || "").toUpperCase());
-    return idx === -1 ? 999 : idx;
-  }
-
-  // Campos pelos quais dá pra agrupar a lista — clicando no cabeçalho da
-  // coluna correspondente na tabela. getKey decide o "balde" de cada aluno;
-  // rank decide a ordem dos baldes (status segue a jornada do aluno, sim/não
-  // vem sempre nessa ordem, texto livre fica em ordem alfabética).
-  var GROUP_FIELDS = {
-    status: {
-      label: "Status",
-      getKey: function (a) { return a.status || "Sem status"; },
-      rank: function (k) { return statusRank(k); }
-    },
-    instituicao: {
-      label: "Instituição",
-      getKey: function (a) { return a.instituicao || "Sem instituição"; },
-      rank: function () { return 0; }
-    },
-    curso: {
-      label: "Curso",
-      getKey: function (a) { return a.curso || "Sem curso"; },
-      rank: function () { return 0; }
-    },
-    agendado: {
-      label: "Agendado",
-      getKey: function (a) { return a.agendado ? "Agendado" : "Não agendado"; },
-      rank: function (k) { return k === "Agendado" ? 0 : 1; }
-    },
-    atendido: {
-      label: "Atendido",
-      getKey: function (a) { return a.atendido ? "Atendido" : "Não atendido"; },
-      rank: function (k) { return k === "Atendido" ? 0 : 1; }
-    }
-  };
-
-  // Colunas da tabela de alunos. As com "group" viram cabeçalho clicável pra
-  // reagrupar (e somem da lista de colunas enquanto forem o agrupamento
-  // ativo, já que o grupo já mostra aquela informação); as demais só ordenam
+  // Colunas da tabela de alunos — todas ordenáveis clicando no cabeçalho
   // (mesmo padrão de painel_vendas_publico.html: th.sortable + seta).
   var ALUNO_COLS = [
     { key: "nome", label: "Nome" },
     { key: "cpf", label: "CPF" },
     { key: "telefone", label: "Telefone" },
-    { key: "instituicao", label: "Instituição", group: "instituicao" },
-    { key: "curso", label: "Curso", group: "curso" },
-    { key: "status", label: "Status", group: "status" },
-    { key: "agendado", label: "Agendado", group: "agendado" },
-    { key: "atendido", label: "Atendido", group: "atendido" },
+    { key: "instituicao", label: "Instituição", wrap: true },
+    { key: "curso", label: "Curso", wrap: true },
+    { key: "status", label: "Status" },
+    { key: "agendado", label: "Agendado" },
+    { key: "atendido", label: "Atendido" },
     { key: "tarefasPendentes", label: "Tarefas", num: true }
   ];
 
@@ -866,7 +818,7 @@
       return true;
     });
     renderKpis();
-    renderAlunosAgrupados();
+    renderTabela();
   }
 
   function renderKpis() {
@@ -885,96 +837,48 @@
     }).join("");
   }
 
-  function renderAlunosAgrupados() {
-    var list = state.filtrados;
-    var container = $("statusGroups");
-    var field = GROUP_FIELDS[state.groupBy] || GROUP_FIELDS.status;
-    $("alunosGroupTitle").textContent = "Alunos por " + field.label.toLowerCase();
+  var RENDER_CAP = 500;
 
+  function renderTabela() {
+    var list = sortAlunos(state.filtrados);
+    var tbl = $("tblAlunos");
     if (!list.length) {
-      container.innerHTML = '<div class="empty-note">Nenhum aluno encontrado com esses filtros.</div>';
+      tbl.innerHTML = '<tbody><tr><td class="empty-note">Nenhum aluno encontrado com esses filtros.</td></tr></tbody>';
       $("tblNote").textContent = "";
       return;
     }
 
-    var grupos = {};
-    list.forEach(function (a) {
-      var k = field.getKey(a);
-      if (!grupos[k]) grupos[k] = [];
-      grupos[k].push(a);
-    });
-    var chaves = Object.keys(grupos).sort(function (x, y) {
-      var rx = field.rank(x), ry = field.rank(y);
-      if (rx !== ry) return rx - ry;
-      return x.localeCompare(y, "pt-BR");
-    });
-
-    // colunas visíveis nas linhas: todas, exceto a que está sendo usada
-    // como agrupamento agora (ela já aparece como título do grupo)
-    var visibleCols = ALUNO_COLS.filter(function (c) { return c.group !== state.groupBy; });
-
-    var GROUP_CAP = 300;
-    var theadHtml = "<thead><tr>" + visibleCols.map(function (c) {
-      if (c.group) {
-        return '<th class="sortable groupable" data-group="' + c.group + '" title="Agrupar por ' + escapeHtml(GROUP_FIELDS[c.group].label) + '">' +
-          escapeHtml(c.label) + '<span class="group-icon">⊞</span></th>';
-      }
+    var theadHtml = "<thead><tr>" + ALUNO_COLS.map(function (c) {
       var arrow = state.sort.key === c.key ? (state.sort.dir === "asc" ? "▲" : "▼") : "";
       return '<th class="sortable' + (c.num ? " num" : "") + '" data-key="' + c.key + '">' + escapeHtml(c.label) + (arrow ? '<span class="arrow">' + arrow + '</span>' : '') + '</th>';
     }).join("") + "</tr></thead>";
 
-    container.innerHTML = chaves.map(function (chave) {
-      var alunos = sortAlunos(grupos[chave]);
-      var aberto = !!state.grupoExpandido[chave];
-      var capped = alunos.slice(0, GROUP_CAP);
-      var rowsHtml = capped.map(function (a) {
-        var cells = visibleCols.map(function (c) {
-          return (c.num ? '<td class="num">' : '<td>') + alunoCellHtml(a, c.key) + '</td>';
-        }).join("");
-        return '<tr class="clickable" data-codigo="' + a.codigo + '">' + cells + '</tr>';
+    var capped = list.slice(0, RENDER_CAP);
+    var rowsHtml = capped.map(function (a) {
+      var cells = ALUNO_COLS.map(function (c) {
+        var cls = (c.num ? "num" : "") + (c.wrap ? (c.num ? " wrap" : "wrap") : "");
+        return (cls ? '<td class="' + cls + '">' : '<td>') + alunoCellHtml(a, c.key) + '</td>';
       }).join("");
-      var nota = alunos.length > GROUP_CAP
-        ? '<div class="card-sub" style="margin-top:8px;">Mostrando ' + GROUP_CAP + ' de ' + alunos.length.toLocaleString("pt-BR") + ' — refine a busca para ver mais. A exportação sempre inclui todos.</div>'
-        : "";
-      return '<div class="status-group" data-grupo="' + escapeHtml(chave) + '">' +
-        '<div class="collapsible-header' + (aberto ? " open" : "") + '" data-grupo-toggle="' + escapeHtml(chave) + '">' +
-          '<h2 style="margin:0;">' + escapeHtml(chave) + '<span class="count-badge">' + alunos.length.toLocaleString("pt-BR") + '</span></h2>' +
-          '<span class="chevron">▸</span>' +
-        '</div>' +
-        '<div class="collapsible-body" style="' + (aberto ? "" : "display:none;") + '">' +
-          '<div class="table-wrap"><table class="data-tbl">' + theadHtml + '<tbody>' + rowsHtml + '</tbody></table></div>' +
-          nota +
-        '</div>' +
-      '</div>';
+      return '<tr class="clickable" data-codigo="' + a.codigo + '">' + cells + '</tr>';
     }).join("");
 
-    container.querySelectorAll(".collapsible-header").forEach(function (header) {
-      header.addEventListener("click", function () {
-        var chave = header.dataset.grupoToggle;
-        state.grupoExpandido[chave] = !state.grupoExpandido[chave];
-        renderAlunosAgrupados();
-      });
-    });
-    container.querySelectorAll("th[data-group]").forEach(function (th) {
-      th.addEventListener("click", function () {
-        state.groupBy = th.getAttribute("data-group");
-        state.grupoExpandido = {};
-        renderAlunosAgrupados();
-      });
-    });
-    container.querySelectorAll("th[data-key]").forEach(function (th) {
+    tbl.innerHTML = theadHtml + "<tbody>" + rowsHtml + "</tbody>";
+
+    tbl.querySelectorAll("th[data-key]").forEach(function (th) {
       th.addEventListener("click", function () {
         var k = th.getAttribute("data-key");
         if (state.sort.key === k) state.sort.dir = state.sort.dir === "asc" ? "desc" : "asc";
         else state.sort = { key: k, dir: "asc" };
-        renderAlunosAgrupados();
+        renderTabela();
       });
     });
-    container.querySelectorAll("tr.clickable").forEach(function (row) {
+    tbl.querySelectorAll("tr.clickable").forEach(function (row) {
       row.addEventListener("click", function () { openDrawer(Number(row.dataset.codigo)); });
     });
 
-    $("tblNote").textContent = list.length.toLocaleString("pt-BR") + " aluno(s) no total, em " + chaves.length + " grupo(s) de " + field.label.toLowerCase() + ".";
+    $("tblNote").textContent = list.length > RENDER_CAP
+      ? ("Mostrando " + RENDER_CAP + " de " + list.length.toLocaleString("pt-BR") + " resultados — refine a busca para ver mais. A exportação sempre inclui todos os " + list.length.toLocaleString("pt-BR") + ".")
+      : (list.length.toLocaleString("pt-BR") + " aluno(s) encontrado(s).");
   }
 
   // ---------- exportação CSV ----------
